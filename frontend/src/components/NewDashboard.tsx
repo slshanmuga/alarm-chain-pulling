@@ -13,7 +13,8 @@ import {
   PieChart,
   Pie,
   Cell,
-  LabelList
+  LabelList,
+  Legend
 } from 'recharts';
 import axios from 'axios';
 import GlobalFilters, { GlobalFilterState } from './GlobalFilters';
@@ -258,19 +259,36 @@ const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
         }
       }
 
+      const RADIAN = Math.PI / 180;
+      const renderSmartLabel = (props: any) => {
+        const { cx, cy, midAngle, outerRadius, name, value, percent } = props;
+        if (percent < 0.035) return null; // hide labels < 3.5%
+        const r = outerRadius + 14; // place outside
+        const x = cx + r * Math.cos(-midAngle * RADIAN);
+        const y = cy + r * Math.sin(-midAngle * RADIAN);
+        const anchor = x > cx ? 'start' : 'end';
+        return (
+          <text x={x} y={y} fill="#333" fontSize={12} textAnchor={anchor} dominantBaseline="central">
+            {`${name} ${value} (${(percent * 100).toFixed(0)}%)`}
+          </text>
+        );
+      };
+
       return (
         <Card title={title} style={{ height: '400px' }}>
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie
                 data={pieData}
-                cx="50%"
+                cx="45%"
                 cy="50%"
-                labelLine={false}
-                label={({ name, percent, value }) => `${name}\n${value} (${(percent! * 100).toFixed(0)}%)`}
-                outerRadius={80}
-                fill="#8884d8"
+                innerRadius={70}
+                outerRadius={100}
+                paddingAngle={1}
+                minAngle={2}
                 dataKey="value"
+                labelLine={false}
+                label={renderSmartLabel}
                 startAngle={90}
                 endAngle={450}
               >
@@ -278,7 +296,8 @@ const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip formatter={(value, name, props) => [value, props.payload.fullName]} />
+              <Legend layout="vertical" verticalAlign="middle" align="right" />
+              <Tooltip formatter={(value, name, props) => [value, props?.payload?.fullName || name]} />
             </PieChart>
           </ResponsiveContainer>
         </Card>
@@ -286,48 +305,47 @@ const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
     }
 
     if (type === 'horizontal-bar') {
-      return (
-        <Card title={title} style={{ height: '400px' }}>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={chartData.slice(0, 10)} layout="horizontal" margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis type="number" domain={[0, 'dataMax']} />
-              <YAxis 
-                dataKey="fullName" 
-                type="category" 
-                width={150} 
-                tick={{ fontSize: 11, textAnchor: 'end' }}
-                tickFormatter={(value) => {
-                  if (value.length > 20) {
-                    const words = value.split(' ');
-                    if (words.length > 1) {
-                      const mid = Math.ceil(words.length / 2);
-                      const line1 = words.slice(0, mid).join(' ');
-                      const line2 = words.slice(mid).join(' ');
-                      return line1 + '\n' + line2;
-                    }
-                    return value.substring(0, 18) + '...';
-                  }
-                  return value;
-                }}
-              />
-              <Tooltip 
-                formatter={(value, name, props) => [value, props?.payload?.fullName || name]}
-                contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc' }}
-              />
-              <Bar dataKey="value" fill="#1890ff" maxBarSize={20}>
-                <LabelList 
-                  dataKey="value" 
-                  position="right" 
-                  style={{ fontSize: '12px', fill: '#666' }}
-                  formatter={(value: any) => value && value > 0 ? value : ''}
-                />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-      );
-    }
+  return (
+    <Card title={title} style={{ height: '400px' }}>
+      <ResponsiveContainer width="100%" height={300}>
+        <BarChart
+          data={chartData.slice(0, 10)}
+          layout="vertical"
+          margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis type="number" domain={[0, 'dataMax']} allowDecimals={false} />
+          <YAxis
+            dataKey="fullName"
+            type="category"
+            width={150}
+            interval={0}
+            tick={{ fontSize: 11, textAnchor: 'end' }}
+            tickFormatter={(value: string) => {
+              if (value.length > 20) {
+                const words = value.split(' ');
+                if (words.length > 1) {
+                  const mid = Math.ceil(words.length / 2);
+                  return `${words.slice(0, mid).join(' ')}\n${words.slice(mid).join(' ')}`;
+                }
+                return value.substring(0, 18) + '...';
+              }
+              return value;
+            }}
+          />
+          <Tooltip
+            formatter={(value, name, props) => [value as number, props?.payload?.fullName || name]}
+            contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc' }}
+          />
+          <Bar dataKey="value" fill="#1890ff" maxBarSize={20}>
+            <LabelList dataKey="value" position="right" style={{ fontSize: '12px', fill: '#666' }} />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </Card>
+  );
+}
+
 
     const isTopTrainsChart = title.includes('Train Incident Overview');
     

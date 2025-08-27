@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, DatePicker, Select, Space, Button, Row, Col, Typography, Radio } from 'antd';
 import { DownloadOutlined, FilterOutlined } from '@ant-design/icons';
 import { Dayjs } from 'dayjs';
@@ -39,14 +39,39 @@ const GlobalFilters: React.FC<GlobalFiltersProps> = ({
     rpf_posts: [],
     train_numbers: []
   });
-  const [filteredTrainNumbers, setFilteredTrainNumbers] = useState<string[]>([]);
-  const [filteredRpfPosts, setFilteredRpfPosts] = useState<string[]>([]);
+  const [filteredTrainNumbers, setFilteredTrainNumbers] = useState<Array<{ value: string; incident_count: number }>>([]);
+  const [filteredRpfPosts, setFilteredRpfPosts] = useState<Array<{ value: string; incident_count: number }>>([]);
+
+  const loadFilterOptions = useCallback(async () => {
+    try {
+      const response = await axios.get(`/filter-options/${cacheKey}`);
+      const options = response.data as FilterOptions;
+      console.log('Raw API response:', response.data);
+      console.log('Processed options:', options);
+      console.log('RPF Posts count:', options.rpf_posts?.length || 0);
+      console.log('Train Numbers count:', options.train_numbers?.length || 0);
+      
+      // Data comes pre-sorted by incident count from backend
+      setFilterOptions({
+        rpf_posts: options.rpf_posts || [],
+        train_numbers: options.train_numbers || []
+      });
+    } catch (error) {
+      console.error('Failed to load filter options:', error);
+    }
+  }, [cacheKey]);
+
+  const updateFilteredOptions = useCallback(() => {
+    // Options come pre-sorted by incident count from backend, just pass them through
+    setFilteredTrainNumbers(filterOptions.train_numbers);
+    setFilteredRpfPosts(filterOptions.rpf_posts);
+  }, [filterOptions.train_numbers, filterOptions.rpf_posts]);
 
   useEffect(() => {
     if (cacheKey) {
       loadFilterOptions();
     }
-  }, [cacheKey]);
+  }, [cacheKey, loadFilterOptions]);
 
   useEffect(() => {
     onFiltersChange({
@@ -60,7 +85,7 @@ const GlobalFilters: React.FC<GlobalFiltersProps> = ({
 
   useEffect(() => {
     updateFilteredOptions();
-  }, [selectedRpfPosts, selectedTrainNumbers, filterOptions]);
+  }, [updateFilteredOptions]);
 
   useEffect(() => {
     if (timeframe === 'month' && selectedMonth) {
@@ -71,39 +96,6 @@ const GlobalFilters: React.FC<GlobalFiltersProps> = ({
       setDateRange([startOfMonth, endOfMonth]);
     }
   }, [selectedMonth, timeframe]);
-
-  const loadFilterOptions = async () => {
-    try {
-      const response = await axios.get(`/filter-options/${cacheKey}`);
-      const options = response.data as FilterOptions;
-      setFilterOptions({
-        rpf_posts: (options.rpf_posts || []).sort(),
-        train_numbers: (options.train_numbers || []).sort()
-      });
-    } catch (error) {
-      console.error('Failed to load filter options:', error);
-    }
-  };
-
-  const updateFilteredOptions = () => {
-    // If RPF posts are selected, filter train numbers accordingly
-    if (selectedRpfPosts.length > 0) {
-      // In a real implementation, you would make an API call to get trains for selected RPF posts
-      // For now, we show all available trains
-      setFilteredTrainNumbers(filterOptions.train_numbers);
-    } else {
-      setFilteredTrainNumbers(filterOptions.train_numbers);
-    }
-
-    // If train numbers are selected, filter RPF posts accordingly  
-    if (selectedTrainNumbers.length > 0) {
-      // In a real implementation, you would make an API call to get RPF posts for selected trains
-      // For now, we show all available RPF posts
-      setFilteredRpfPosts(filterOptions.rpf_posts);
-    } else {
-      setFilteredRpfPosts(filterOptions.rpf_posts);
-    }
-  };
 
   const handleRpfPostChange = (values: string[]) => {
     setSelectedRpfPosts(values);
@@ -210,8 +202,10 @@ const GlobalFilters: React.FC<GlobalFiltersProps> = ({
                 showSearch
                 optionFilterProp="children"
               >
-                {filteredRpfPosts.map(post => (
-                  <Option key={post} value={post}>{post}</Option>
+                {filteredRpfPosts.map(item => (
+                  <Option key={item.value} value={item.value}>
+                    {item.value} ({item.incident_count})
+                  </Option>
                 ))}
               </Select>
             </Space>
@@ -228,8 +222,10 @@ const GlobalFilters: React.FC<GlobalFiltersProps> = ({
                 showSearch
                 optionFilterProp="children"
               >
-                {filteredTrainNumbers.map(train => (
-                  <Option key={train} value={train}>{train}</Option>
+                {filteredTrainNumbers.map(item => (
+                  <Option key={item.value} value={item.value}>
+                    {item.value} ({item.incident_count})
+                  </Option>
                 ))}
               </Select>
             </Space>

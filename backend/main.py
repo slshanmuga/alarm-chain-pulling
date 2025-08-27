@@ -211,10 +211,16 @@ async def get_filter_options(cache_key: str):
     
     for option_key, column in categorical_fields.items():
         if column in df.columns:
-            # For train_numbers and rpf_posts, sort by incident count (highest to lowest)
+            # For train_numbers and rpf_posts, return with incident counts
             if option_key in ['train_numbers', 'rpf_posts']:
-                value_counts = df[column].value_counts()
-                options[option_key] = [str(v) for v in value_counts.index.tolist()]
+                value_counts = df[column].dropna().value_counts()
+                options[option_key] = [
+                    {
+                        'value': str(v), 
+                        'incident_count': int(count)
+                    } 
+                    for v, count in value_counts.items()
+                ]
             else:
                 unique_values = df[column].dropna().unique().tolist()
                 options[option_key] = sorted([str(v) for v in unique_values])

@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a full-stack web application for analyzing railway alarm chain pulling incidents data. The application consists of:
 
-- **Backend**: FastAPI Python server with comprehensive data processing capabilities for alarm chain incidents
-- **Frontend**: React TypeScript application with Ant Design components and interactive dashboards for data visualization
+- **Backend**: FastAPI Python server (v0.104.1) with comprehensive data processing capabilities for alarm chain incidents
+- **Frontend**: React TypeScript application (React v19.1.1) with Ant Design (v5.27.1) components and Recharts (v3.1.2) for interactive dashboards and data visualization
 
 ## Architecture
 
@@ -160,23 +160,26 @@ The application expects CSV files with these specific alarm chain pulling column
 ## Development Notes
 
 ### Backend Architecture
+- FastAPI 0.104.1 with Uvicorn 0.24.0 as ASGI server
 - Uses file content MD5 hashing for efficient caching of alarm chain data
-- FastAPI with automatic OpenAPI documentation at `/docs`
-- Pandas-based data processing with optimized memory usage
+- Automatic OpenAPI documentation available at `/docs`
+- Pandas 2.1.4-based data processing with optimized memory usage
 - Date parsing using `dayfirst=True` for Indian DD-MM-YYYY format
 - CORS middleware configured for development server access
-- Type-safe request/response models using Pydantic
+- Type-safe request/response models using Pydantic 2.5.0
+- Python-multipart 0.0.6 for file upload handling
 - Smart filtering with incident count-based sorting for RPF Posts and Train Numbers
 - Enhanced KPI data processing with both monthly and daily trend calculations
 - Advanced time analysis with top 11 slots + "Others" aggregation
 
 ### Frontend Architecture
-- React 18+ with TypeScript for type safety
+- React 19.1.1 with TypeScript (v4.9.5) for type safety
 - State management using React hooks (useState, useEffect, useCallback)
-- Ant Design 5.x for consistent UI components
-- Recharts for interactive data visualization with comprehensive data labeling
-- React Router for client-side navigation
-- Axios for HTTP requests with proxy configuration
+- Ant Design 5.27.1 for consistent UI components
+- Recharts 3.1.2 for interactive data visualization with comprehensive data labeling
+- React Router DOM 7.8.2 for client-side navigation
+- Axios 1.11.0 for HTTP requests with proxy configuration
+- DayJS 1.11.13 for date/time manipulation
 - Advanced chart rendering with proper sorting and data display optimization
 - Dynamic KPI card system with trend analysis and direction detection
 

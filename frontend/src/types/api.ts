@@ -1,6 +1,6 @@
 export interface FilterOptions {
-  rpf_posts: string[];
-  train_numbers: string[];
+  rpf_posts: Array<{ value: string; incident_count: number }>;
+  train_numbers: Array<{ value: string; incident_count: number }>;
 }
 
 export interface TableResponse {
