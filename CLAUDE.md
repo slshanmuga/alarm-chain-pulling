@@ -40,20 +40,23 @@ This is a full-stack web application for analyzing railway alarm chain pulling i
   - `TrainList.tsx` - Top 25 affected trains listing
   - `TopSections.tsx` - Section-wise incident analysis
 - **Data visualization features**:
-  - Interactive timeline charts (area charts) with monthly/weekly/daily granularity
-  - Top 25 affected trains chart (horizontal bar chart)
+  - Interactive timeline charts (area charts) with monthly/weekly/daily granularity and data labels
+  - Top 25 affected trains chart (horizontal bar chart) sorted highest to lowest
   - Section-wise analysis with drill-down capabilities
-  - Coach category distribution charts
-  - Reason analysis (horizontal bar charts for better readability)
-  - Time slot analysis (pie charts with max 12 segments)
-  - Mid-section analysis with geographic insights
-  - Day-wise incident pattern analysis
+  - Coach category distribution charts with data labels
+  - Reason analysis (horizontal bar charts with data labels for better readability)
+  - Time slot analysis (pie charts with 11 individual slots + "Others" category)
+  - Mid-section analysis with geographic insights and data labels
+  - Day-wise incident pattern analysis with data labels
 - **User Experience**: 
   - Responsive design with mobile-first approach
   - Real-time filtering with immediate chart updates
   - Export functionality (CSV/JSON) with current filter state
   - Loading states and error handling
   - Collapsible navigation for better screen utilization
+  - Advanced timeframe selection (All/Month/Custom) with month picker
+  - Smart filtering with RPF Posts and Trains sorted by incident count
+  - Dynamic KPI cards with daily trend analysis and direction indicators
 
 ## Development Commands
 
@@ -134,7 +137,7 @@ The application expects CSV files with these specific alarm chain pulling column
 - `GET /health` - Health check endpoint
 
 ### Analytics & KPIs
-- `POST /kpi-data/{cache_key}` - Get KPI data (total incidents, percentile, daily average, monthly trend)
+- `POST /kpi-data/{cache_key}` - Get KPI data (total incidents, percentile, daily average, monthly trend, daily trend)
 - `POST /analytics/{cache_key}` - Get general statistics and analytics for alarm incidents
 - `POST /day-analysis/{cache_key}` - Get day-wise incident analysis
 
@@ -163,14 +166,19 @@ The application expects CSV files with these specific alarm chain pulling column
 - Date parsing using `dayfirst=True` for Indian DD-MM-YYYY format
 - CORS middleware configured for development server access
 - Type-safe request/response models using Pydantic
+- Smart filtering with incident count-based sorting for RPF Posts and Train Numbers
+- Enhanced KPI data processing with both monthly and daily trend calculations
+- Advanced time analysis with top 11 slots + "Others" aggregation
 
 ### Frontend Architecture
 - React 18+ with TypeScript for type safety
 - State management using React hooks (useState, useEffect, useCallback)
 - Ant Design 5.x for consistent UI components
-- Recharts for interactive data visualization
+- Recharts for interactive data visualization with comprehensive data labeling
 - React Router for client-side navigation
 - Axios for HTTP requests with proxy configuration
+- Advanced chart rendering with proper sorting and data display optimization
+- Dynamic KPI card system with trend analysis and direction detection
 
 ### Performance Optimizations
 - useCallback hooks to prevent unnecessary re-renders
@@ -207,10 +215,12 @@ The application expects CSV files with these specific alarm chain pulling column
 - **Status Monitoring**: Real-time incident status tracking and resolution timelines
 
 ### Advanced Analytics
-- **Top 25 Analysis**: Detailed analysis of most affected trains with drill-down capabilities
+- **Top 25 Analysis**: Detailed analysis of most affected trains with drill-down capabilities, properly sorted highest to lowest
 - **Day Pattern Analysis**: Weekly incident pattern recognition (Monday-Sunday)
-- **Reason Categorization**: Hierarchical categorization of incident reasons with frequency analysis
-- **Coach Position Analysis**: Analysis based on specific coach positions and types
+- **Reason Categorization**: Hierarchical categorization of incident reasons with frequency analysis and horizontal bar chart display
+- **Coach Position Analysis**: Analysis based on specific coach positions and types with simplified "Coaches" heading
+- **Enhanced Time Analysis**: 24-hour time slot analysis with top 11 individual periods plus "Others" category, displayed clockwise from highest to lowest
+- **Dynamic KPI System**: Real-time trend detection with daily patterns for All/Month/Custom timeframe modes
 
 ## Current Technical Status
 
@@ -220,15 +230,27 @@ The application expects CSV files with these specific alarm chain pulling column
 - **Top 25 Trains Feature**: Implemented proper display of top 25 affected trains (previously showing only 10)
 - **React Hook Dependencies**: Fixed useCallback and useEffect dependency warnings for optimal performance
 - **Chart Responsiveness**: Enhanced chart rendering with proper data limits and responsive design
+- **Enhanced KPI Cards**: Implemented daily trend analysis with direction detection (Increasing/Decreasing/Stable)
+- **Advanced Filtering**: RPF Post and Train filters now sorted by incident count (highest to lowest)
+- **Comprehensive Data Labeling**: Added data labels to all charts (bar, horizontal bar, pie, timeline)
+- **Improved Chart Headings**: Updated chart titles - "Coaches", "Reasons", "Time Analysis"
+- **Time Analysis Enhancement**: Implemented 11 individual slots + "Others" with proper clockwise sorting
+- **Month Selection**: Added month picker for timeframe mode with "No data available" messaging
+- **Sorting Optimization**: All charts now display data sorted from highest to lowest values
 
 ### Known Working Features
 - CSV file upload and processing (tested with backend/frontend integration)
 - Real-time data filtering with immediate UI updates
-- KPI card display with trend sparklines
-- Interactive charts with proper data binding
-- Export functionality (CSV/JSON) 
+- Enhanced KPI card display with daily trend analysis and direction indicators
+- Interactive charts with comprehensive data labeling and proper sorting
+- Export functionality (CSV/JSON) with current filter state
 - Multi-train analysis with drill-down capabilities
 - Responsive navigation with collapsible sidebar
+- Advanced timeframe selection with month picker and custom date ranges
+- Smart filter sorting based on incident frequency
+- Comprehensive time analysis with 11+1 slot distribution
+- "No data available" messaging for empty month selections
+- All chart types working with proper data display and sorting
 
 ### Development Server Status
 - Backend server: Runs on `http://localhost:8000` with auto-reload
@@ -241,6 +263,10 @@ The application expects CSV files with these specific alarm chain pulling column
 - ESLint warnings addressed for React hooks best practices
 - Proper error handling and loading states implemented
 - API endpoints tested and verified working
+- Enhanced data processing with null handling and proper sorting algorithms
+- Optimized chart rendering performance with LabelList components
+- Comprehensive trend analysis algorithms with statistical calculations
+- Smart data aggregation for time analysis with "Others" category handling
 
 ## important-instruction-reminders
 Do what has been asked; nothing more, nothing less.

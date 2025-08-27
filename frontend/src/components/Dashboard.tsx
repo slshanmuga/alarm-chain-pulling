@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Card, 
-  Table, 
-  Row, 
-  Col, 
+import {
+  Card,
+  Table,
+  Row,
+  Col,
   Typography,
   Select,
   Slider,
@@ -29,6 +29,8 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { Dayjs } from 'dayjs';
 import axios from 'axios';
+import KPICards from './KPICards';
+import GlobalFilters, { GlobalFilterState } from './GlobalFilters';
 
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
@@ -43,6 +45,7 @@ interface FilterRequest {
   reasons?: string[];
   coach_types?: string[];
   sections?: string[];
+  rpf_posts?: string[];
 }
 
 interface TrainIncident {
@@ -78,6 +81,13 @@ interface TrainAnalyticsResponse {
   mid_sections: Record<string, number>;
 }
 
+interface KPIData {
+  total_incidents: number;
+  daily_avg: number;
+  monthly_trend: number[];
+  percentile?: number;
+}
+
 interface DashboardProps {
   cacheKey: string;
 }
@@ -97,52 +107,65 @@ const Dashboard: React.FC<DashboardProps> = ({ cacheKey }) => {
   });
   const [timelineData, setTimelineData] = useState<any[]>([]);
   const [selectedTrain, setSelectedTrain] = useState<string | null>(null);
-  const [dateRangeMode, setDateRangeMode] = useState<'all' | 'month' | 'custom'>('all');
-  const [customDateRange, setCustomDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [kpiData, setKpiData] = useState<KPIData>({
+    total_incidents: 0,
+    daily_avg: 0,
+    monthly_trend: []
+  });
+  const [globalFilters, setGlobalFilters] = useState<GlobalFilterState>({
+    timeframe: 'all',
+    dateRange: null,
+    selectedMonth: null,
+    rpfPosts: [],
+    trainNumbers: []
+  });
   const [rowLimit, setRowLimit] = useState<number>(25);
 
   const getFilters = (): FilterRequest => {
     const filters: FilterRequest = {};
-    
-    if (dateRangeMode === 'month') {
-      const now = new Date();
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      filters.date_from = firstDay.toISOString().split('T')[0];
-      filters.date_to = lastDay.toISOString().split('T')[0];
-    } else if (dateRangeMode === 'custom' && customDateRange) {
-      filters.date_from = customDateRange[0]?.format('YYYY-MM-DD') || undefined;
-      filters.date_to = customDateRange[1]?.format('YYYY-MM-DD') || undefined;
+
+    if (globalFilters.timeframe === 'month' || globalFilters.timeframe === 'custom') {
+      if (globalFilters.dateRange) {
+        filters.date_from = globalFilters.dateRange[0]?.format('YYYY-MM-DD');
+        filters.date_to = globalFilters.dateRange[1]?.format('YYYY-MM-DD');
+      }
     }
-    
-    if (selectedTrain) {
+
+    if (globalFilters.rpfPosts.length > 0) {
+      filters.rpf_posts = globalFilters.rpfPosts;
+    }
+
+    if (globalFilters.trainNumbers.length > 0) {
+      filters.train_numbers = globalFilters.trainNumbers;
+    } else if (selectedTrain) {
       filters.train_numbers = [selectedTrain];
     }
-    
+
     return filters;
   };
 
   const loadData = async () => {
     if (!cacheKey) return;
-    
+
     setLoading(true);
     try {
       const filters = getFilters();
-      
-      const [trainIncidentsRes, trainAnalyticsRes, timelineRes] = await Promise.all([
+
+      const [trainIncidentsRes, trainAnalyticsRes, timelineRes, kpiRes] = await Promise.all([
         axios.post(`/train-incidents/${cacheKey}`, filters, { params: { limit: rowLimit } }),
-        axios.post(`/train-analytics/${cacheKey}`, filters, { 
-          params: { 
+        axios.post(`/train-analytics/${cacheKey}`, filters, {
+          params: {
             train_no: selectedTrain || undefined,
             limit: 10
-          } 
+          }
         }),
-        axios.post(`/train-timeline/${cacheKey}`, filters, { 
-          params: { 
+        axios.post(`/train-timeline/${cacheKey}`, filters, {
+          params: {
             train_no: selectedTrain || undefined,
             granularity: selectedTrain ? 'weekly' : 'monthly'
-          } 
-        })
+          }
+        }),
+        axios.post(`/kpi-data/${cacheKey}`, filters)
       ]);
 
       setTrainIncidents((trainIncidentsRes.data as TrainIncidentsResponse).trains || []);
@@ -154,6 +177,7 @@ const Dashboard: React.FC<DashboardProps> = ({ cacheKey }) => {
         mid_sections: {}
       });
       setTimelineData((timelineRes.data as TimelineData).timeline || []);
+      setKpiData(kpiRes.data as KPIData);
     } catch (error: any) {
       console.error('Failed to load dashboard data:', error);
     } finally {
@@ -163,7 +187,7 @@ const Dashboard: React.FC<DashboardProps> = ({ cacheKey }) => {
 
   useEffect(() => {
     loadData();
-  }, [cacheKey, selectedTrain, dateRangeMode, customDateRange, rowLimit]);
+  }, [cacheKey, selectedTrain, globalFilters, rowLimit]);
 
   const handleTrainClick = (trainNo: string) => {
     if (selectedTrain === trainNo) {
@@ -216,18 +240,38 @@ const Dashboard: React.FC<DashboardProps> = ({ cacheKey }) => {
   const renderChart = (data: Record<string, number>, title: string, type: 'bar' | 'pie' = 'bar') => {
     if (!data || Object.keys(data).length === 0) return null;
 
-    const chartData = Object.entries(data).map(([key, value]) => ({
-      name: key,
-      value: Number(value)
-    }));
+    const chartData = Object.entries(data)
+      .sort(([,a], [,b]) => b - a) // Sort by value descending
+      .map(([key, value]) => ({
+        name: key,
+        value: Number(value)
+      }));
 
     if (type === 'pie') {
+      let processedData = chartData;
+
+      // Special handling for Time Analysis
+      if (title.includes('Time Analysis')) {
+        // Sort by value descending and take top 11, sum the rest as 'Others'
+        const sortedData = [...chartData].sort((a, b) => b.value - a.value);
+        const top11 = sortedData.slice(0, 11);
+        const othersSum = sortedData.slice(11).reduce((sum, item) => sum + item.value, 0);
+
+        processedData = [...top11];
+        if (othersSum > 0) {
+          processedData.push({
+              name: 'Others',
+              value: othersSum
+            });
+        }
+      }
+
       return (
         <Card title={title} style={{ height: '400px' }}>
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie
-                data={chartData}
+                data={processedData}
                 cx="50%"
                 cy="50%"
                 labelLine={false}
@@ -236,11 +280,11 @@ const Dashboard: React.FC<DashboardProps> = ({ cacheKey }) => {
                 fill="#8884d8"
                 dataKey="value"
               >
-                {chartData.map((entry, index) => (
+                {processedData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip />
+              <Tooltip formatter={(value, name, props) => [value, props.payload.fullName || name]} />
             </PieChart>
           </ResponsiveContainer>
         </Card>
@@ -254,8 +298,8 @@ const Dashboard: React.FC<DashboardProps> = ({ cacheKey }) => {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
             <YAxis />
-            <Tooltip />
-            <Bar dataKey="value" fill="#1890ff" />
+            <Tooltip formatter={(value, name, props) => [value, props.payload.fullName || name]} />
+            <Bar dataKey="value" fill="#1890ff" label={{ position: 'top' }} />
           </BarChart>
         </ResponsiveContainer>
       </Card>
@@ -280,57 +324,99 @@ const Dashboard: React.FC<DashboardProps> = ({ cacheKey }) => {
     );
   };
 
+  const handleDownload = async (format: string) => {
+    try {
+      const filters = getFilters();
+      const response = await axios.post(`/export-data/${cacheKey}`, filters, {
+        params: { format },
+        responseType: format === 'csv' ? 'blob' : 'json'
+      });
+
+      if (format === 'csv') {
+        const blob = new Blob([response.data as string], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', 'dashboard_data.csv');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } else {
+        const dataStr = JSON.stringify(response.data, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', 'dashboard_data.json');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+    } catch (error) {
+      console.error('Failed to download data:', error);
+    }
+  };
+
   return (
     <div>
+      <GlobalFilters
+        cacheKey={cacheKey}
+        onFiltersChange={setGlobalFilters}
+        onDownload={handleDownload}
+      />
+
+      {/* KPI Cards */}
+      <div style={{ marginBottom: 24 }}>
+        <KPICards
+          totalIncidents={kpiData.total_incidents}
+          percentile={kpiData.percentile}
+          dailyAverage={kpiData.daily_avg}
+          monthlyTrend={kpiData.monthly_trend}
+          loading={loading}
+          timeframeMode={globalFilters.timeframe}
+          thirdCardData={kpiData.monthly_trend}
+          thirdCardTitle={
+            globalFilters.timeframe === 'all' ? 'Daily Trend (30 days)' :
+            globalFilters.timeframe === 'month' ? 'Daily Trend (Month)' :
+            'Daily Trend (Custom)'
+          }
+        />
+      </div>
+
       <Row style={{ marginBottom: 16 }}>
         <Col span={24}>
           <Card>
             <Row align="middle" justify="space-between">
               <Col>
-                <Title level={4}>Dashboard Controls</Title>
+                <Title level={4}>Display Controls</Title>
               </Col>
               <Col>
                 <Space>
-                  <span>Date Range:</span>
-                  <Select value={dateRangeMode} onChange={setDateRangeMode} style={{ width: 120 }}>
-                    <Option value="all">All</Option>
-                    <Option value="month">This Month</Option>
-                    <Option value="custom">Custom</Option>
-                  </Select>
-                  
-                  {dateRangeMode === 'custom' && (
-                    <RangePicker
-                      value={customDateRange}
-                      onChange={setCustomDateRange}
-                      format="YYYY-MM-DD"
-                    />
-                  )}
-                  
-                  <span>Display Rows:</span>
-                  <Slider
-                    value={rowLimit}
-                    onChange={setRowLimit}
-                    min={5}
-                    max={100}
-                    step={5}
-                    style={{ width: 100 }}
-                    tooltip={{ formatter: (value) => `${value}` }}
-                  />
-                  <span>{rowLimit}</span>
-                  
-                  <Button onClick={loadData} loading={loading}>
-                    Refresh
-                  </Button>
-                </Space>
-              </Col>
-            </Row>
-          </Card>
+                   <span>Display Rows:</span>
+                   <Slider
+                     value={rowLimit}
+                     onChange={setRowLimit}
+                     min={5}
+                     max={100}
+                     step={5}
+                     style={{ width: 100 }}
+                     tooltip={{ formatter: (value) => `${value}` }}
+                   />
+                   <span>{rowLimit}</span>
+
+                   <Button onClick={loadData} loading={loading}>
+                     Refresh
+                   </Button>
+                 </Space>
+               </Col>
+             </Row>
+           </Card>
         </Col>
       </Row>
 
       <Spin spinning={loading}>
         <Row gutter={[16, 16]}>
-          <Col span={24}>
+          <Col xs={24} lg={12}>
             <Card title={`Top ${rowLimit} Trains by Incidents${selectedTrain ? ` (Selected: ${selectedTrain})` : ''}`}>
               <Table
                 columns={trainColumns}
@@ -341,6 +427,15 @@ const Dashboard: React.FC<DashboardProps> = ({ cacheKey }) => {
                 rowClassName={(record) => selectedTrain === record.train_no ? 'selected-row' : ''}
               />
             </Card>
+          </Col>
+          <Col xs={24} lg={12}>
+            {renderChart(
+              trainIncidents.reduce((acc, train) => {
+                acc[train.train_no] = train.incident_count;
+                return acc;
+              }, {} as Record<string, number>),
+              'Top 25 Affected Trains'
+            )}
           </Col>
         </Row>
 
@@ -355,16 +450,16 @@ const Dashboard: React.FC<DashboardProps> = ({ cacheKey }) => {
 
         <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
           <Col xs={24} lg={12}>
-            {renderChart(trainAnalytics.coaches, selectedTrain ? `${selectedTrain} - Coach Categories` : 'Top 10 Coach Categories')}
+            {renderChart(trainAnalytics.coaches, selectedTrain ? `${selectedTrain} - Coaches` : 'Coaches')}
           </Col>
           <Col xs={24} lg={12}>
-            {renderChart(trainAnalytics.reasons, selectedTrain ? `${selectedTrain} - Top Reasons` : 'Top Affected Reasons')}
+            {renderChart(trainAnalytics.reasons, selectedTrain ? `${selectedTrain} - Reasons` : 'Reasons')}
           </Col>
         </Row>
 
         <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
           <Col xs={24} lg={12}>
-            {renderChart(trainAnalytics.time_analysis, selectedTrain ? `${selectedTrain} - Time Slots` : 'Time Analysis (All Trains)', 'pie')}
+            {renderChart(trainAnalytics.time_analysis, selectedTrain ? `${selectedTrain} - Time Analysis` : 'Time Analysis', 'pie')}
           </Col>
           <Col xs={24} lg={12}>
             {renderChart(trainAnalytics.mid_sections, selectedTrain ? `${selectedTrain} - Mid Sections` : 'Mid Section Analysis')}

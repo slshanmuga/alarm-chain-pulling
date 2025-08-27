@@ -16,6 +16,7 @@ export interface KPIData {
   percentile?: number;
   daily_avg: number;
   monthly_trend: number[];
+  daily_trend: number[];
 }
 
 export interface AnalyticsData {

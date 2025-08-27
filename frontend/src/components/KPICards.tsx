@@ -11,6 +11,9 @@ interface KPICardsProps {
   dailyAverage: number;
   monthlyTrend: number[];
   loading?: boolean;
+  timeframeMode?: 'all' | 'month' | 'custom';
+  thirdCardData?: number[];
+  thirdCardTitle?: string;
 }
 
 const KPICards: React.FC<KPICardsProps> = ({
@@ -18,7 +21,10 @@ const KPICards: React.FC<KPICardsProps> = ({
   percentile,
   dailyAverage,
   monthlyTrend,
-  loading = false
+  loading = false,
+  timeframeMode = 'all',
+  thirdCardData,
+  thirdCardTitle
 }) => {
   const sparklineData = monthlyTrend.map((value, index) => ({
     index,
@@ -91,9 +97,9 @@ const KPICards: React.FC<KPICardsProps> = ({
       </Col>
 
       <Col xs={24} sm={8}>
-        <Card 
+        <Card
           loading={loading}
-          style={{ 
+          style={{
             height: '120px',
             boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
           }}
@@ -103,25 +109,22 @@ const KPICards: React.FC<KPICardsProps> = ({
             <Col span={12}>
               <div>
                 <RiseOutlined style={{ marginRight: 8, color: '#fa8c16' }} />
-                <Text strong>Monthly Trend</Text>
-                <div style={{ 
-                  fontSize: '24px', 
-                  fontWeight: 'bold',
-                  color: '#fa8c16',
-                  marginTop: '8px'
+                <Text strong style={{ 
+                  fontSize: '14px',
+                  display: 'block',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
                 }}>
-                  {monthlyTrend.length > 0 ? monthlyTrend[monthlyTrend.length - 1] : 0}
-                </div>
-                <Text type="secondary" style={{ fontSize: '12px' }}>
-                  Latest month
+                  {thirdCardTitle || 'Monthly Trend'}
                 </Text>
               </div>
             </Col>
             <Col span={12}>
-              {sparklineData.length > 1 && (
+              {(thirdCardData && thirdCardData.length > 1) || (sparklineData.length > 1 && !thirdCardData) ? (
                 <div style={{ height: '60px', marginTop: '10px' }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={sparklineData}>
+                    <LineChart data={(thirdCardData || monthlyTrend).map((value, index) => ({ index, value }))}>
                       <Line
                         type="monotone"
                         dataKey="value"
@@ -133,7 +136,7 @@ const KPICards: React.FC<KPICardsProps> = ({
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-              )}
+              ) : null}
             </Col>
           </Row>
         </Card>

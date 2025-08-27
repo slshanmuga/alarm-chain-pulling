@@ -28,6 +28,7 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({ cacheKey }) => {
   const [globalFilters, setGlobalFilters] = useState<GlobalFilterState>({
     timeframe: 'all',
     dateRange: null,
+    selectedMonth: null,
     rpfPosts: [],
     trainNumbers: []
   });

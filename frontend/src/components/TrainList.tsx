@@ -30,6 +30,7 @@ const TrainList: React.FC<TrainListProps> = ({ cacheKey }) => {
   const [globalFilters, setGlobalFilters] = useState<GlobalFilterState>({
     timeframe: 'all',
     dateRange: null,
+    selectedMonth: null,
     rpfPosts: [],
     trainNumbers: []
   });

@@ -12,7 +12,8 @@ import {
   Bar,
   PieChart,
   Pie,
-  Cell
+  Cell,
+  LabelList
 } from 'recharts';
 import axios from 'axios';
 import GlobalFilters, { GlobalFilterState } from './GlobalFilters';
@@ -30,9 +31,11 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'
 
 const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
   const [loading, setLoading] = useState(false);
+  const [noDataForMonth, setNoDataForMonth] = useState(false);
   const [globalFilters, setGlobalFilters] = useState<GlobalFilterState>({
     timeframe: 'all',
     dateRange: null,
+    selectedMonth: null,
     rpfPosts: [],
     trainNumbers: []
   });
@@ -40,7 +43,8 @@ const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
   const [kpiData, setKpiData] = useState<KPIData>({
     total_incidents: 0,
     daily_avg: 0,
-    monthly_trend: []
+    monthly_trend: [],
+    daily_trend: []
   });
   
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData>({
@@ -109,18 +113,28 @@ const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
         axios.post(`/train-list/${cacheKey}?limit=25`, filters)
       ]);
 
-      setKpiData(kpiRes.data as KPIData);
-      setAnalyticsData(analyticsRes.data as AnalyticsData);
+      const kpiResponse = kpiRes.data as KPIData;
+      setKpiData(kpiResponse);
+      const analyticsResponse = analyticsRes.data as AnalyticsData;
+      console.log('Analytics response:', analyticsResponse);
+      setAnalyticsData(analyticsResponse);
       setDayAnalysisData(dayAnalysisRes.data as DayAnalysisData);
       const timelineResponse = timelineRes.data as TimelineData;
       setTimelineData(timelineResponse.timeline || []);
       
-      // Process train list data for top trains chart
+      // Check if there's no data for the selected month
+      if (globalFilters.timeframe === 'month' && kpiResponse.total_incidents === 0) {
+        setNoDataForMonth(true);
+      } else {
+        setNoDataForMonth(false);
+      }
+      
+      // Process train list data for top trains chart - maintain order from backend (highest to lowest)
       const trainListResponse = trainListRes.data as { trains: Array<{train_no: string, incident_count: number}> };
-      const trainsData = trainListResponse.trains.reduce((acc, train) => {
-        acc[train.train_no] = train.incident_count;
-        return acc;
-      }, {} as Record<string, number>);
+      const trainsData: Record<string, number> = {};
+      trainListResponse.trains.forEach(train => {
+        trainsData[train.train_no] = train.incident_count;
+      });
       setTopTrainsData(trainsData);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
@@ -128,6 +142,33 @@ const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
       setLoading(false);
     }
   }, [cacheKey, selectedTrain, buildFilters]);
+
+  const getTrendDirection = (trendData: number[]): string => {
+    if (!trendData || trendData.length < 2) return 'Stable';
+    
+    const firstHalf = trendData.slice(0, Math.floor(trendData.length / 2));
+    const secondHalf = trendData.slice(Math.floor(trendData.length / 2));
+    
+    const firstAvg = firstHalf.reduce((sum, val) => sum + val, 0) / firstHalf.length;
+    const secondAvg = secondHalf.reduce((sum, val) => sum + val, 0) / secondHalf.length;
+    
+    if (secondAvg > firstAvg * 1.1) return 'Increasing';
+    if (secondAvg < firstAvg * 0.9) return 'Decreasing';
+    return 'Stable';
+  };
+
+  const getThirdCardTitle = (): string => {
+    switch (globalFilters.timeframe) {
+      case 'all':
+        return 'Daily Trend (Last 30 Days)';
+      case 'month':
+        return 'Daily Trend (Selected Month)';
+      case 'custom':
+        return 'Daily Trend (Custom Period)';
+      default:
+        return 'Daily Trend';
+    }
+  };
 
   useEffect(() => {
     if (cacheKey) {
@@ -167,8 +208,27 @@ const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
     }
   };
 
+  const handleTrainClick = (trainNo: string) => {
+    // If clicking the same train that's already selected, deselect it
+    if (selectedTrain === trainNo) {
+      setGlobalFilters(prev => ({
+        ...prev,
+        trainNumbers: []
+      }));
+    } else {
+      // Select the new train
+      setGlobalFilters(prev => ({
+        ...prev,
+        trainNumbers: [trainNo]
+      }));
+    }
+  };
+
   const renderChart = (data: Record<string, number>, title: string, type: 'bar' | 'pie' | 'horizontal-bar' = 'bar') => {
-    if (!data || Object.keys(data).length === 0) {
+    console.log(`Rendering ${title} chart with data:`, data, 'type:', type);
+    
+    if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+      console.log(`No valid data for ${title} chart`);
       return (
         <Card title={title} style={{ height: '400px' }}>
           <div style={{ textAlign: 'center', padding: '100px 0', color: '#999' }}>
@@ -178,28 +238,43 @@ const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
       );
     }
 
-    const chartData = Object.entries(data).map(([key, value]) => ({
+    let chartData = Object.entries(data).map(([key, value]) => ({
       name: key.length > 15 ? key.substring(0, 12) + '...' : key,
       value: Number(value),
       fullName: key
     }));
 
+    // Sort data by value (highest to lowest) for proper display
+    chartData = chartData.sort((a, b) => b.value - a.value);
+
     if (type === 'pie') {
+      // For Time Analysis, ensure "Others" is at the end if present
+      let pieData = chartData.slice(0, 12);
+      if (title.includes('Time Analysis')) {
+        const othersIndex = pieData.findIndex(item => item.fullName === 'Others');
+        if (othersIndex !== -1) {
+          const othersItem = pieData.splice(othersIndex, 1)[0];
+          pieData.push(othersItem);
+        }
+      }
+
       return (
         <Card title={title} style={{ height: '400px' }}>
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie
-                data={chartData.slice(0, 12)}
+                data={pieData}
                 cx="50%"
                 cy="50%"
                 labelLine={false}
-                label={({ name, percent }) => `${name} ${(percent! * 100).toFixed(0)}%`}
+                label={({ name, percent, value }) => `${name}\n${value} (${(percent! * 100).toFixed(0)}%)`}
                 outerRadius={80}
                 fill="#8884d8"
                 dataKey="value"
+                startAngle={90}
+                endAngle={450}
               >
-                {chartData.slice(0, 12).map((entry, index) => (
+                {pieData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
@@ -214,27 +289,104 @@ const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
       return (
         <Card title={title} style={{ height: '400px' }}>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={chartData.slice(0, 10)} layout="horizontal">
+            <BarChart data={chartData.slice(0, 10)} layout="horizontal" margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis type="number" />
-              <YAxis dataKey="name" type="category" width={100} />
-              <Tooltip formatter={(value, name, props) => [value, props.payload.fullName]} />
-              <Bar dataKey="value" fill="#1890ff" />
+              <XAxis type="number" domain={[0, 'dataMax']} />
+              <YAxis 
+                dataKey="fullName" 
+                type="category" 
+                width={150} 
+                tick={{ fontSize: 11, textAnchor: 'end' }}
+                tickFormatter={(value) => {
+                  if (value.length > 20) {
+                    const words = value.split(' ');
+                    if (words.length > 1) {
+                      const mid = Math.ceil(words.length / 2);
+                      const line1 = words.slice(0, mid).join(' ');
+                      const line2 = words.slice(mid).join(' ');
+                      return line1 + '\n' + line2;
+                    }
+                    return value.substring(0, 18) + '...';
+                  }
+                  return value;
+                }}
+              />
+              <Tooltip 
+                formatter={(value, name, props) => [value, props?.payload?.fullName || name]}
+                contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc' }}
+              />
+              <Bar dataKey="value" fill="#1890ff" maxBarSize={20}>
+                <LabelList 
+                  dataKey="value" 
+                  position="right" 
+                  style={{ fontSize: '12px', fill: '#666' }}
+                  formatter={(value: any) => value && value > 0 ? value : ''}
+                />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </Card>
       );
     }
 
+    const isTopTrainsChart = title.includes('Train Incident Overview');
+    
     return (
       <Card title={title} style={{ height: '400px' }}>
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={chartData.slice(0, title.includes('Top 25') ? 25 : 10)}>
+          <BarChart data={chartData.slice(0, title.includes('Train Incident Overview') ? 25 : 10)}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
             <YAxis />
-            <Tooltip formatter={(value, name, props) => [value, props.payload.fullName]} />
-            <Bar dataKey="value" fill="#1890ff" />
+            <Tooltip 
+              formatter={(value, name, props) => [value, props.payload.fullName]}
+              content={({ active, payload }) => {
+                if (active && payload && payload[0] && isTopTrainsChart) {
+                  const trainNo = payload[0].payload.fullName;
+                  const isSelected = selectedTrain && trainNo === selectedTrain;
+                  return (
+                    <div style={{ 
+                      backgroundColor: '#fff', 
+                      border: '1px solid #ccc', 
+                      padding: '8px',
+                      borderRadius: '4px'
+                    }}>
+                      <p>{`Train: ${trainNo}`}</p>
+                      <p>{`Incidents: ${payload[0].value}`}</p>
+                      {isSelected ? (
+                        <p style={{ color: '#52c41a', fontSize: '12px', margin: 0 }}>
+                          Currently selected - Click to deselect
+                        </p>
+                      ) : (
+                        <p style={{ color: '#1890ff', fontSize: '12px', margin: 0 }}>
+                          Click to filter by this train
+                        </p>
+                      )}
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+            <Bar 
+              dataKey="value" 
+              fill={isTopTrainsChart ? "#1890ff" : "#1890ff"} 
+              style={{ cursor: isTopTrainsChart ? 'pointer' : 'default' }}
+              onClick={isTopTrainsChart ? (data: any) => handleTrainClick(data.payload?.fullName) : undefined}
+              shape={isTopTrainsChart ? (props: any) => {
+                const isSelected = selectedTrain && props.payload?.fullName === selectedTrain;
+                return (
+                  <rect
+                    {...props}
+                    fill={isSelected ? "#52c41a" : "#1890ff"}
+                    stroke={isSelected ? "#389e0d" : "none"}
+                    strokeWidth={isSelected ? 2 : 0}
+                  />
+                );
+              } : undefined}
+            >
+              <LabelList dataKey="value" position="top" style={{ fontSize: '12px' }} />
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </Card>
@@ -266,7 +418,9 @@ const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
             <XAxis dataKey="period" />
             <YAxis />
             <Tooltip />
-            <Area type="monotone" dataKey="count" stroke="#1890ff" fill="#1890ff" fillOpacity={0.6} />
+            <Area type="monotone" dataKey="count" stroke="#1890ff" fill="#1890ff" fillOpacity={0.6}>
+              <LabelList dataKey="count" position="top" style={{ fontSize: '12px' }} />
+            </Area>
           </AreaChart>
         </ResponsiveContainer>
       </Card>
@@ -289,22 +443,41 @@ const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
         />
 
         <Spin spinning={loading}>
-          {/* KPI Cards */}
-          <div style={{ marginBottom: 24 }}>
-            <KPICards
-              totalIncidents={kpiData.total_incidents}
-              percentile={kpiData.percentile}
-              dailyAverage={kpiData.daily_avg}
-              monthlyTrend={kpiData.monthly_trend}
-              loading={loading}
-            />
-          </div>
+          {/* No Data Message for Month mode */}
+          {noDataForMonth && globalFilters.timeframe === 'month' ? (
+            <div style={{ 
+              textAlign: 'center', 
+              padding: '100px 0', 
+              fontSize: '18px',
+              color: '#999',
+              backgroundColor: 'white',
+              borderRadius: '8px',
+              margin: '24px 0',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+            }}>
+              No data available for the selected month
+            </div>
+          ) : (
+            <>
+              {/* KPI Cards */}
+              <div style={{ marginBottom: 24 }}>
+                <KPICards
+                  totalIncidents={kpiData.total_incidents}
+                  percentile={kpiData.percentile}
+                  dailyAverage={kpiData.daily_avg}
+                  monthlyTrend={kpiData.monthly_trend}
+                  loading={loading}
+                  timeframeMode={globalFilters.timeframe}
+                  thirdCardData={kpiData.daily_trend}
+                  thirdCardTitle={`${getThirdCardTitle()} - ${getTrendDirection(kpiData.daily_trend)}`}
+                />
+              </div>
 
-          {/* Top 25 Trains Chart - Only show when no specific train is selected */}
-          {!selectedTrain && Object.keys(topTrainsData).length > 0 && (
+          {/* Top 25 Trains Chart - Always visible for easy navigation */}
+          {Object.keys(topTrainsData).length > 0 && (
             <Row gutter={16} style={{ marginBottom: 16 }}>
               <Col span={24}>
-                {renderChart(topTrainsData, 'Top 25 Affected Trains', 'bar')}
+                {renderChart(topTrainsData, selectedTrain ? `Train Incident Overview (${selectedTrain} Selected)` : 'Train Incident Overview', 'bar')}
               </Col>
             </Row>
           )}
@@ -322,20 +495,16 @@ const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
             </Col>
           </Row>
 
-          {/* Second Row: Coaches + Reasons */}
+          {/* Second Row: Coaches + Day Analysis */}
           <Row gutter={16} style={{ marginBottom: 16 }}>
             <Col xs={24} lg={12}>
               {renderChart(
                 analyticsData.coaches, 
-                selectedTrain ? `${selectedTrain} - Coach Categories` : 'Top 10 Coach Categories'
+                selectedTrain ? `${selectedTrain} - Coach Categories` : 'Coaches'
               )}
             </Col>
             <Col xs={24} lg={12}>
-              {renderChart(
-                analyticsData.reasons, 
-                selectedTrain ? `${selectedTrain} - Top Reasons` : 'Top Affected Reasons',
-                'horizontal-bar'
-              )}
+              {renderChart(dayAnalysisData.day_analysis, 'Day Analysis')}
             </Col>
           </Row>
 
@@ -344,7 +513,7 @@ const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
             <Col xs={24} lg={12}>
               {renderChart(
                 analyticsData.time_analysis, 
-                selectedTrain ? `${selectedTrain} - Time Slots` : 'Time Analysis (Max 12 slots)',
+                selectedTrain ? `${selectedTrain} - Time Slots` : 'Time Analysis',
                 'pie'
               )}
             </Col>
@@ -356,12 +525,18 @@ const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
             </Col>
           </Row>
 
-          {/* Fourth Row: Day Analysis */}
+          {/* Fourth Row: Reasons */}
           <Row gutter={16}>
             <Col span={24}>
-              {renderChart(dayAnalysisData.day_analysis, 'Day Analysis')}
+              {renderChart(
+                analyticsData.reasons || {}, 
+                selectedTrain ? `${selectedTrain} - Top Reasons` : 'Reasons',
+                'horizontal-bar'
+              )}
             </Col>
           </Row>
+          </>
+          )}
         </Spin>
       </div>
     </div>

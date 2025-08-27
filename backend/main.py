@@ -211,8 +211,13 @@ async def get_filter_options(cache_key: str):
     
     for option_key, column in categorical_fields.items():
         if column in df.columns:
-            unique_values = df[column].dropna().unique().tolist()
-            options[option_key] = sorted([str(v) for v in unique_values])
+            # For train_numbers and rpf_posts, sort by incident count (highest to lowest)
+            if option_key in ['train_numbers', 'rpf_posts']:
+                value_counts = df[column].value_counts()
+                options[option_key] = [str(v) for v in value_counts.index.tolist()]
+            else:
+                unique_values = df[column].dropna().unique().tolist()
+                options[option_key] = sorted([str(v) for v in unique_values])
     
     return options
 
@@ -385,13 +390,36 @@ async def get_train_analytics(cache_key: str, filters: FilterRequest, train_no: 
     
     # Reasons analysis
     if 'reason' in filtered_df.columns:
-        reasons = filtered_df['reason'].value_counts().head(limit)
+        reasons = filtered_df['reason'].dropna().value_counts().head(limit)
         analytics['reasons'] = {str(k): int(v) for k, v in reasons.items()}
     
-    # Time analysis (limited to 12 slices)
+    # Time analysis with 11 individual slots + others (24-hour format)
     if 'time_analysis' in filtered_df.columns:
-        time_data = filtered_df['time_analysis'].value_counts().head(12)
-        analytics['time_analysis'] = {str(k): int(v) for k, v in time_data.items()}
+        time_counts = filtered_df['time_analysis'].value_counts()
+        
+        # Get top 11 time slots
+        top_11 = time_counts.head(11)
+        
+        # Calculate "Others" from remaining slots
+        others_count = time_counts.iloc[11:].sum() if len(time_counts) > 11 else 0
+        
+        # Build the analytics with top 11 + others
+        analytics['time_analysis'] = {str(k): int(v) for k, v in top_11.items()}
+        if others_count > 0:
+            analytics['time_analysis']['Others'] = int(others_count)
+    elif 'from' in filtered_df.columns:
+        # Fallback: extract hour from 'from' time field if available
+        time_data = filtered_df['from'].dropna().apply(
+            lambda x: f"{str(x).split(':')[0].zfill(2)}:00" if ':' in str(x) else None
+        ).value_counts()
+        
+        # Get top 11 hours
+        top_11_hours = time_data.head(11)
+        others_count = time_data.iloc[11:].sum() if len(time_data) > 11 else 0
+        
+        analytics['time_analysis'] = {str(k): int(v) for k, v in top_11_hours.items()}
+        if others_count > 0:
+            analytics['time_analysis']['Others'] = int(others_count)
     
     # Mid section analysis
     if 'mid_section' in filtered_df.columns:
@@ -486,15 +514,25 @@ async def get_kpi_data(cache_key: str, filters: FilterRequest):
     
     # Monthly sparkline trend (last 12 months or available data)
     monthly_trend = []
+    daily_trend = []
     if not filtered_df.empty and 'date' in filtered_df.columns:
         monthly_data = filtered_df.groupby(filtered_df['date'].dt.to_period('M')).size()
         monthly_trend = [int(count) for count in monthly_data.tail(12).values]
+        
+        # Daily trend for last 30 days
+        daily_data = filtered_df.groupby('date').size()
+        # Get last 30 days from the max date in the dataset
+        max_date = filtered_df['date'].max()
+        last_30_days = pd.date_range(end=max_date, periods=30, freq='D')
+        daily_trend_data = daily_data.reindex(last_30_days, fill_value=0)
+        daily_trend = [int(count) for count in daily_trend_data.values]
     
     return {
         "total_incidents": total_incidents,
         "percentile": percentile,
         "daily_avg": round(daily_avg, 2),
-        "monthly_trend": monthly_trend
+        "monthly_trend": monthly_trend,
+        "daily_trend": daily_trend
     }
 
 @app.post("/day-analysis/{cache_key}")

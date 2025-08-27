@@ -27,6 +27,7 @@ const TopSections: React.FC<TopSectionsProps> = ({ cacheKey }) => {
   const [globalFilters, setGlobalFilters] = useState<GlobalFilterState>({
     timeframe: 'all',
     dateRange: null,
+    selectedMonth: null,
     rpfPosts: [],
     trainNumbers: []
   });
