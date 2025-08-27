@@ -324,36 +324,24 @@ const Dashboard: React.FC<DashboardProps> = ({ cacheKey }) => {
     );
   };
 
-  const handleDownload = async (format: string) => {
+  const handleDownload = async () => {
     try {
       const filters = getFilters();
-      const response = await axios.post(`/export-data/${cacheKey}`, filters, {
-        params: { format },
-        responseType: format === 'csv' ? 'blob' : 'json'
+      const response = await axios.post(`/export-data/${cacheKey}?format=pdf`, filters, {
+        responseType: 'blob'
       });
 
-      if (format === 'csv') {
-        const blob = new Blob([response.data as string], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', 'dashboard_data.csv');
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-      } else {
-        const dataStr = JSON.stringify(response.data, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', 'dashboard_data.json');
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-      }
+      const blob = new Blob([response.data as BlobPart], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'alarm_chain_incidents_report.pdf');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Failed to download data:', error);
+      console.error('Failed to download PDF report:', error);
     }
   };
 

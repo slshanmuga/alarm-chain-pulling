@@ -588,46 +588,8 @@ async def get_train_list(cache_key: str, filters: FilterRequest, limit: int = 25
 
 @app.post("/export-data/{cache_key}")
 async def export_data(cache_key: str, filters: FilterRequest, format: str = "csv"):
-    """Export filtered data in specified format"""
-    if cache_key not in data_cache:
-        raise HTTPException(status_code=404, detail="Data not found")
-    
-    df = data_cache[cache_key]['data']
-    filtered_df = apply_filters(df, filters)
-    
-    if format.lower() == "csv":
-        from fastapi.responses import Response
-        import io
-        
-        output = io.StringIO()
-        filtered_df.to_csv(output, index=False)
-        csv_data = output.getvalue()
-        
-        return Response(
-            content=csv_data,
-            media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=alarm_chain_data.csv"}
-        )
-    elif format.lower() == "json":
-        from fastapi.responses import JSONResponse
-        
-        # Convert dataframe to JSON-serializable format
-        records = []
-        for _, row in filtered_df.iterrows():
-            record = {}
-            for col in filtered_df.columns:
-                value = row[col]
-                if pd.isna(value):
-                    record[col] = None
-                elif isinstance(value, pd.Timestamp):
-                    record[col] = value.strftime('%Y-%m-%d')
-                else:
-                    record[col] = str(value)
-            records.append(record)
-        
-        return JSONResponse(content={"data": records, "total_records": len(records)})
-    else:
-        raise HTTPException(status_code=400, detail="Unsupported format. Use 'csv' or 'json'")
+    """Export filtered data - PDF generation is handled by frontend"""
+    raise HTTPException(status_code=501, detail="PDF export is now handled by the frontend. This endpoint is deprecated.")
 
 @app.get("/health")
 async def health_check():

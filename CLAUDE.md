@@ -51,7 +51,7 @@ This is a full-stack web application for analyzing railway alarm chain pulling i
 - **User Experience**: 
   - Responsive design with mobile-first approach
   - Real-time filtering with immediate chart updates
-  - Export functionality (CSV/JSON) with current filter state
+  - Export functionality (PDF) with current filter state
   - Loading states and error handling
   - Collapsible navigation for better screen utilization
   - Advanced timeframe selection (All/Month/Custom) with month picker

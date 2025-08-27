@@ -2,9 +2,7 @@ import React from 'react';
 import { Menu } from 'antd';
 import { 
   DashboardOutlined, 
-  UnorderedListOutlined, 
-  CarOutlined, 
-  EnvironmentOutlined 
+  UnorderedListOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -19,8 +17,6 @@ const NavigationRail: React.FC<NavigationRailProps> = ({ collapsed = true }) => 
   const getSelectedKey = () => {
     if (location.pathname === '/') return 'dashboard';
     if (location.pathname === '/all-incidents') return 'all-incidents';
-    if (location.pathname.startsWith('/train')) return 'top-trains';
-    if (location.pathname === '/top-sections') return 'top-sections';
     return 'dashboard';
   };
 
@@ -31,12 +27,6 @@ const NavigationRail: React.FC<NavigationRailProps> = ({ collapsed = true }) => 
         break;
       case 'all-incidents':
         navigate('/all-incidents');
-        break;
-      case 'top-trains':
-        navigate('/train');
-        break;
-      case 'top-sections':
-        navigate('/top-sections');
         break;
     }
   };
@@ -65,18 +55,6 @@ const NavigationRail: React.FC<NavigationRailProps> = ({ collapsed = true }) => 
           icon: <UnorderedListOutlined />,
           label: collapsed ? null : 'All Incidents',
           title: 'All Incidents'
-        },
-        {
-          key: 'top-trains',
-          icon: <CarOutlined />,
-          label: collapsed ? null : 'Top Affected: Trains',
-          title: 'Top Affected: Trains'
-        },
-        {
-          key: 'top-sections',
-          icon: <EnvironmentOutlined />,
-          label: collapsed ? null : 'Top Affected: Sections',
-          title: 'Top Affected: Sections'
         }
       ]}
     />

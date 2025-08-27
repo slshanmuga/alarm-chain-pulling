@@ -13,7 +13,7 @@ const { Text } = Typography;
 interface GlobalFiltersProps {
   cacheKey: string;
   onFiltersChange: (filters: GlobalFilterState) => void;
-  onDownload: (format: string) => void;
+  onDownload: () => void;
 }
 
 export interface GlobalFilterState {
@@ -245,15 +245,9 @@ const GlobalFilters: React.FC<GlobalFiltersProps> = ({
             <Button
               type="primary"
               icon={<DownloadOutlined />}
-              onClick={() => onDownload('csv')}
+              onClick={onDownload}
             >
-              Download CSV
-            </Button>
-            <Button
-              icon={<DownloadOutlined />}
-              onClick={() => onDownload('json')}
-            >
-              Download JSON  
+              Export PDF Report
             </Button>
           </Space>
         </Col>

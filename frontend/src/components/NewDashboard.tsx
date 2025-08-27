@@ -177,35 +177,115 @@ const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
     }
   }, [cacheKey, globalFilters, loadAllData]);
 
-  const handleDownload = async (format: string) => {
+  const handleDownload = async () => {
     try {
-      const filters = buildFilters();
-      const response = await axios.post(`/export-data/${cacheKey}?format=${format}`, filters, {
-        responseType: format === 'csv' ? 'blob' : 'json'
+      // Import libraries dynamically
+      const html2canvas = (await import('html2canvas')).default;
+      const { jsPDF } = await import('jspdf');
+      
+      // Find the dashboard container
+      const dashboardElement = document.getElementById('dashboard-container');
+      if (!dashboardElement) {
+        throw new Error('Dashboard container not found');
+      }
+      
+      // Hide navigation rail and any non-essential elements during capture
+      const navRail = document.querySelector('.ant-layout-sider');
+      const originalNavDisplay = navRail ? (navRail as HTMLElement).style.display : '';
+      if (navRail) {
+        (navRail as HTMLElement).style.display = 'none';
+      }
+      
+      // Capture the dashboard
+      const canvas = await html2canvas(dashboardElement, {
+        scale: 1.5, // Higher quality
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        width: dashboardElement.scrollWidth,
+        height: dashboardElement.scrollHeight
       });
       
-      if (format === 'csv') {
-        const blob = new Blob([response.data as string], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', 'alarm_chain_data.csv');
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-      } else {
-        const dataStr = JSON.stringify(response.data, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', 'alarm_chain_data.json');
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+      // Restore navigation rail
+      if (navRail) {
+        (navRail as HTMLElement).style.display = originalNavDisplay;
       }
+      
+      // Create PDF
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+      
+      // Calculate dimensions to fit the page
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pageWidth - 20; // 10mm margin on each side
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      
+      // Add title and timestamp
+      pdf.setFontSize(16);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Railway Alarm Chain Pulling Incidents Dashboard', 10, 15);
+      
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      const timestamp = new Date().toLocaleString('en-GB', {
+        day: '2-digit',
+        month: '2-digit', 
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      pdf.text(`Generated on: ${timestamp}`, 10, 25);
+      
+      // Add the dashboard image
+      if (imgHeight <= pageHeight - 40) {
+        // Single page
+        pdf.addImage(imgData, 'PNG', 10, 30, imgWidth, imgHeight);
+      } else {
+        // Multiple pages
+        let remainingHeight = imgHeight;
+        let yPosition = 0;
+        let pageNum = 1;
+        
+        while (remainingHeight > 0) {
+          const currentPageHeight = Math.min(remainingHeight, pageHeight - 40);
+          
+          if (pageNum > 1) {
+            pdf.addPage();
+          }
+          
+          // Calculate the portion of the image to show on this page
+          const sourceY = (yPosition * canvas.height) / imgHeight;
+          const sourceHeight = (currentPageHeight * canvas.height) / imgHeight;
+          
+          // Create a temporary canvas for this page portion
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = canvas.width;
+          tempCanvas.height = sourceHeight;
+          const tempCtx = tempCanvas.getContext('2d');
+          
+          if (tempCtx) {
+            tempCtx.drawImage(canvas, 0, sourceY, canvas.width, sourceHeight, 0, 0, canvas.width, sourceHeight);
+            const tempImgData = tempCanvas.toDataURL('image/png');
+            pdf.addImage(tempImgData, 'PNG', 10, pageNum === 1 ? 30 : 10, imgWidth, currentPageHeight);
+          }
+          
+          remainingHeight -= currentPageHeight;
+          yPosition += currentPageHeight;
+          pageNum++;
+        }
+      }
+      
+      // Save the PDF
+      pdf.save('alarm_chain_dashboard_report.pdf');
+      
     } catch (error) {
-      console.error('Failed to download data:', error);
+      console.error('Failed to generate PDF report:', error);
+      alert(`Failed to export PDF: ${error}`);
     }
   };
 
@@ -453,7 +533,7 @@ const NewDashboard: React.FC<NewDashboardProps> = ({ cacheKey }) => {
       </div>
 
       {/* Main Content */}
-      <div style={{ flex: 1, padding: 24, backgroundColor: '#f5f5f5' }}>
+      <div id="dashboard-container" style={{ flex: 1, padding: 24, backgroundColor: '#f5f5f5' }}>
         <GlobalFilters
           cacheKey={cacheKey}
           onFiltersChange={setGlobalFilters}
