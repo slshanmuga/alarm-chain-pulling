@@ -240,6 +240,8 @@ The application expects CSV files with these specific alarm chain pulling column
 - **Time Analysis Enhancement**: Implemented 11 individual slots + "Others" with proper clockwise sorting
 - **Month Selection**: Added month picker for timeframe mode with "No data available" messaging
 - **Sorting Optimization**: All charts now display data sorted from highest to lowest values
+- **PDF Generation Implementation**: Added frontend-based PDF generation using html2canvas + jsPDF for visual dashboard capture; professional PDF output with landscape A4 format, title header, multi-page support, navigation rail hidden during capture, high-quality rendering; technical details include added dependencies (html2canvas, jsPDF), capture of dashboard-container element, multi-page handling, simplified backend endpoint
+- **Navigation Rail Cleanup**: Removed 'Top Affected: Trains' and 'Top Affected: Sections' from navigation rail, leaving 'Dashboard' and 'All Incidents'
 
 ### Known Working Features
 - CSV file upload and processing (tested with backend/frontend integration)
